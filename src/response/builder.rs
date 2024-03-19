@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
-use http::response::Builder as HttpBuilder;
+use http::{response::Builder as HttpBuilder, StatusCode};
 
 use crate::Response;
 
@@ -19,22 +19,37 @@ impl ResponseBuilder {
     }
 
     pub fn body(self, body: Body) -> crate::Result<Response> {
-        Ok(Response::from_inner(self.inner.body(body).map_err(
-            |e| crate::Error::InvalidResponse(e.to_string()),
-        )?))
+        Ok(Response::from_inner(self.inner.body(body)?))
+    }
+
+    pub fn status(mut self, status: StatusCode) -> Self {
+        self.inner = self.inner.status(status);
+        self
     }
 }
 
-impl Deref for ResponseBuilder {
-    type Target = HttpBuilder;
+// impl Deref for ResponseBuilder {
+//     type Target = HttpBuilder;
 
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
+//     fn deref(&self) -> &Self::Target {
+//         &self.inner
+//     }
+// }
 
-impl DerefMut for ResponseBuilder {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
-    }
+// impl DerefMut for ResponseBuilder {
+//     fn deref_mut(&mut self) -> &mut Self::Target {
+//         &mut self.inner
+//     }
+// }
+
+#[macro_export]
+macro_rules! not_found {
+    () => {
+        not_found!(::std::vec![])
+    };
+    ($body: expr) => {
+        $crate::Response::builder()
+            .status($crate::StatusCode::NOT_FOUND)
+            .body($body)
+    };
 }
