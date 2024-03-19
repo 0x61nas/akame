@@ -70,7 +70,7 @@ impl Response {
     fn write_status_line(&self, writer: &mut impl StdWrite) -> Result<()> {
         write!(
             writer,
-            "HTTP/{} {} {}{CRLF}",
+            "HTTP/{} {}{CRLF}",
             match self.version() {
                 Version::HTTP_2 => "2.0",
                 Version::HTTP_11 => "1.1",
@@ -79,8 +79,7 @@ impl Response {
                 Version::HTTP_10 => "1.0",
                 _ => "1.1",
             },
-            self.status().as_str(),
-            for_now!("OK")
+            self.status()
         )
         .map_err(crate::Error::IOError)
     }
