@@ -11,7 +11,7 @@ use tokio::io::AsyncWriteExt;
 
 use crate::{Result, CRLF};
 
-use self::builder::ResponseBuilder;
+pub use self::builder::ResponseBuilder;
 
 macro_rules! for_now {
     ($msg: expr; $value: expr) => {{
