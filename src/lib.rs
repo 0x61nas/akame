@@ -32,7 +32,7 @@ pub enum Error {
     #[error("Invalid request")]
     InvalidRequest,
     #[error("Invalid response: `{0}`")]
-    InvalidResponse(String),
+    InvalidResponse(#[from] http::Error),
 }
 
 pub type Result<T> = std::result::Result<T, crate::Error>;
