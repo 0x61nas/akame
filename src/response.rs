@@ -2,17 +2,27 @@ pub mod builder;
 
 use std::{
     io::Write as StdWrite,
+    mem,
     ops::{Deref, DerefMut},
+    path::Path,
 };
 
-pub use http::response::Parts;
-use http::Version;
-use tokio::io::AsyncWriteExt;
+use http::{HeaderMap, HeaderValue, StatusCode, Version};
+use tokio::{
+    fs::File,
+    io::{AsyncReadExt, AsyncWriteExt},
+};
 
-use crate::{Result, CRLF};
+use crate::{
+    header::{self, ContentType, HeaderPair},
+    Result, CRLF,
+};
 
 pub use self::builder::ResponseBuilder;
 
+const STATUS_LINE_SIZE: usize = 9 + 3 + 32 + 3;
+
+#[macro_export]
 macro_rules! for_now {
     ($msg: expr; $value: expr) => {{
         eprintln!("WARINIG: for now, {}", $msg);
@@ -23,13 +33,39 @@ macro_rules! for_now {
     };
 }
 
+type Body = Vec<u8>;
+
 #[derive(Clone)]
-#[repr(transparent)]
-pub struct Response {
-    inner: http::Response<Vec<u8>>,
+pub struct Parts {
+    /// The response's status
+    pub status: StatusCode,
+
+    /// The response's version
+    pub version: Version,
+
+    /// The response's headers
+    pub headers: HeaderMap<HeaderValue>,
+    // /// The response's extensions
+    // pub extensions: Extensions,
 }
 
-type Body = Vec<u8>;
+impl Parts {
+    pub(crate) fn new(status: StatusCode, version: Version, headers: HeaderMap) -> Self {
+        Self {
+            status,
+            version,
+            headers,
+        }
+    }
+}
+
+// #[derive(Clone)]
+pub struct Response {
+    // inner: http::Response<Vec<u8>>,
+    head: Parts,
+    body: Body,
+    pub(crate) file: Option<File>,
+}
 
 impl Response {
     pub fn builder() -> ResponseBuilder {
@@ -37,33 +73,79 @@ impl Response {
     }
     #[inline(always)]
     pub fn into_parts(self) -> (Parts, Body) {
-        self.inner.into_parts()
+        (self.head, self.body)
     }
 
     pub fn from_parts(head: Parts, body: Body) -> Self {
         Self {
-            inner: http::Response::from_parts(head, body),
+            // inner: http::Response::from_parts(head, body),
+            head,
+            body,
+            file: None,
         }
     }
 
-    fn from_inner(inner: http::Response<Vec<u8>>) -> Self {
-        Self { inner }
+    // fn from_inner(inner: http::Response<Vec<u8>>) -> Self {
+    //     Self { inner, file: None }
+    // }
+
+    async fn from_file(path: impl AsRef<Path>, mut head: Parts) -> Result<Self> {
+        let mut file = File::open(path).await?;
+        let len = file.metadata().await?.len();
+        head.headers.insert(
+            header::CONTENT_LENGTH,
+            // SAFETY: we know for sure the the string are valid
+            unsafe { HeaderValue::from_str(len.to_string().as_str()).unwrap_unchecked() },
+        );
+        if len < 1024 {
+            let mut buf = Vec::with_capacity(len as usize);
+            file.read_to_end(&mut buf).await?;
+            return Ok(Self {
+                // inner: http::Response::from_parts(head, buf),
+                head,
+                body: buf,
+                file: None,
+            });
+        }
+        Ok(Self {
+            // inner: http::Response::from_parts(head, vec![]),
+            head,
+            body: Body::new(),
+            file: Some(file),
+        })
     }
 
-    pub(crate) async fn write<W: AsyncWriteExt + Unpin>(&self, writer: &mut W) -> Result<()> {
-        let mut buf = Vec::with_capacity(for_now!(524));
+    #[inline(always)]
+    pub(crate) fn guss_buf_size(&self) -> usize {
+        mem::size_of_val(self.headers())
+            + STATUS_LINE_SIZE
+            + if self.file.is_none() {
+                self.body.len()
+            } else {
+                for_now!(0)
+            }
+    }
+
+    #[inline(always)]
+    pub fn has_file(&self) -> bool {
+        self.file.is_some()
+    }
+
+    pub(crate) fn take_file(&mut self) -> Option<File> {
+        std::mem::take(&mut self.file)
+    }
+
+    pub(crate) fn write<W: StdWrite>(&self, writer: &mut W) -> Result<()> {
         // NOTE: maybe use `write_vectored`?
         // The header
-        self.write_status_line(&mut buf)?;
-        self.write_headers(&mut buf)?;
-
-        // The body
-        StdWrite::write_all(&mut buf, CRLF.as_bytes())?;
-        StdWrite::write_all(&mut buf, self.inner.body())?;
+        self.write_header(writer)?;
+        // th body
+        StdWrite::write_all(writer, &self.body)?;
         // StdWrite::write_all(&mutbuf, b'\0')?;
 
         // write
-        writer.write_all(&buf).await.map_err(crate::Error::IOError)
+        // StdWrite::write_all(&mut writer, &writer).map_err(crate::Error::IOError)
+        Ok(())
     }
 
     #[inline]
@@ -86,7 +168,7 @@ impl Response {
 
     #[inline]
     fn write_headers(&self, writer: &mut impl StdWrite) -> Result<()> {
-        for (header, val) in self.inner.headers().iter() {
+        for (header, val) in self.headers().iter() {
             StdWrite::write_fmt(
                 writer,
                 format_args!(
@@ -99,19 +181,47 @@ impl Response {
         }
         Ok(())
     }
-}
 
-impl Deref for Response {
-    type Target = http::Response<Vec<u8>>;
+    pub(crate) fn write_header(&self, writer: &mut impl StdWrite) -> Result<()> {
+        // NOTE: maybe use `write_vectored`?
+        // The header
+        self.write_status_line(writer)?;
+        self.write_headers(writer)?;
 
-    fn deref(&self) -> &Self::Target {
-        &self.inner
+        // The body
+        StdWrite::write_all(writer, CRLF.as_bytes())?;
+        Ok(())
     }
-}
 
-impl DerefMut for Response {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
+    #[inline]
+    pub fn headers(&self) -> &HeaderMap {
+        &self.head.headers
+    }
+
+    pub fn headers_mut(&mut self) -> &mut HeaderMap {
+        &mut self.head.headers
+    }
+
+    pub fn add_header(&mut self, header: HeaderPair) -> Option<HeaderValue> {
+        self.headers_mut().insert(header.name, header.value)
+    }
+
+    #[inline]
+    pub fn status(&self) -> StatusCode {
+        self.head.status
+    }
+
+    pub fn status_mut(&mut self) -> &mut StatusCode {
+        &mut self.head.status
+    }
+
+    #[inline]
+    pub fn version(&self) -> Version {
+        self.head.version
+    }
+
+    pub fn version_mut(&mut self) -> &mut Version {
+        &mut self.head.version
     }
 }
 
@@ -122,14 +232,50 @@ impl DerefMut for Response {
 //     }
 // }
 
-impl<T> From<T> for Response
-where
-    T: Deref<Target = str>,
-{
-    #[inline(always)]
-    fn from(body: T) -> Self {
+// impl<T> From<T> for Response
+// where
+//     T: Deref<Target = str>,
+// {
+//     #[inline(always)]
+//     fn from(body: T) -> Self {
+//         Self::builder()
+//             .body(body.as_bytes().to_vec())
+//             .expect("Unreachable")
+//     }
+// }
+
+const HTML_SIG: &str = "<!DOCTYPE";
+
+impl From<Vec<u8>> for Response {
+    fn from(body: Vec<u8>) -> Self {
         Self::builder()
-            .body(body.as_bytes().to_vec())
+            .header(header::CONTENT_LENGTH, body.len())
+            .body(body)
+            .expect("Unreachable")
+    }
+}
+
+impl From<&str> for Response {
+    fn from(body: &str) -> Self {
+        let c_type = ContentType(if body.starts_with(HTML_SIG) {
+            mime::TEXT_HTML_UTF_8
+        } else {
+            mime::TEXT_PLAIN_UTF_8
+        });
+        let body = body.as_bytes().to_vec();
+        Self::builder()
+            .header(header::CONTENT_LENGTH, body.len())
+            .header_pair(c_type)
+            .body(body)
+            .expect("Unreachable")
+    }
+}
+
+impl From<&[u8]> for Response {
+    fn from(value: &[u8]) -> Self {
+        Self::builder()
+            .header(header::CONTENT_LENGTH, value.len())
+            .body(value.to_vec())
             .expect("Unreachable")
     }
 }

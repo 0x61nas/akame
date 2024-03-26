@@ -1,29 +1,59 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    ops::{Deref, DerefMut},
+    path::Path,
+};
 
-use http::{response::Builder as HttpBuilder, StatusCode};
+use http::{HeaderMap, HeaderName, HeaderValue, StatusCode, Version};
 
-use crate::Response;
+use crate::{header::HeaderPair, Response};
 
-use super::Body;
+use super::{Body, Parts};
 
 #[derive(Debug, Default)]
 pub struct ResponseBuilder {
-    inner: HttpBuilder,
+    status: StatusCode,
+    version: Version,
+    headers: HeaderMap,
 }
 
 impl ResponseBuilder {
     pub fn new() -> Self {
         Self {
-            inner: HttpBuilder::new(),
+            status: StatusCode::default(),
+            version: Version::default(),
+            headers: HeaderMap::default(),
         }
     }
 
     pub fn body(self, body: Body) -> crate::Result<Response> {
-        Ok(Response::from_inner(self.inner.body(body)?))
+        Ok(Response::from_parts(
+            Parts::new(self.status, self.version, self.headers),
+            body,
+        ))
+    }
+
+    pub async fn file(self, path: impl AsRef<Path>) -> crate::Result<Response> {
+        Response::from_file(path, Parts::new(self.status, self.version, self.headers)).await
     }
 
     pub fn status(mut self, status: StatusCode) -> Self {
-        self.inner = self.inner.status(status);
+        self.status = status;
+        self
+    }
+
+    pub fn version(mut self, version: Version) -> Self {
+        self.version = version;
+        self
+    }
+
+    pub fn header(mut self, name: HeaderName, value: impl Into<HeaderValue>) -> Self {
+        self.headers.insert(name, value.into());
+        self
+    }
+
+    pub fn header_pair(mut self, pair: impl Into<HeaderPair>) -> Self {
+        let pair = pair.into();
+        self.headers.insert(pair.name, pair.value);
         self
     }
 }

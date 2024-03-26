@@ -1,20 +1,22 @@
 pub mod context;
+pub mod header;
+pub mod request;
 pub mod response;
 pub mod router;
 
 use std::{marker::PhantomData, net::SocketAddr, sync::Arc};
 
-use context::RequestLine;
+use request::RequestLine;
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter},
+    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
     net::{tcp::OwnedWriteHalf, TcpListener, TcpStream},
 };
 
 // re-exports
 pub use context::Context;
-pub use http::header;
 pub use http::Method;
 pub use http::StatusCode;
+pub use request::Request;
 pub use response::Response;
 pub use router::Router;
 
@@ -37,7 +39,7 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, crate::Error>;
 
-pub type Request = http::Request<Vec<u8>>;
+// pub type Request = http::Request<Vec<u8>>;
 
 pub struct Server<R>
 where
@@ -47,6 +49,11 @@ where
     listener: TcpListener,
     // endpointes: HashMap<EndPoint, Box<dyn FnOnce(Request) -> Response>>,
     router: R,
+}
+
+#[non_exhaustive]
+pub struct ServerConfig {
+    pub response_file_buffer: usize,
 }
 
 // pub struct ServerBulider<R, B>
@@ -92,15 +99,36 @@ where
         let req_line = dbg!(RequestLine::from_bytes(buf)?);
         let ctx = Context::new(req_line, reader, addr);
         // Route
-        let Ok(response) = self.router.route(ctx).await else {
+        let Ok(mut response) = self.router.route(ctx).await else {
             internal_error(writer);
             return Ok(());
         };
+        let mut response = response.into();
 
         // write the response
-        let mut writer = BufWriter::new(writer);
-        response.write(&mut writer).await?;
-        writer.flush().await?;
+        let _buf_size = response.guss_buf_size();
+        let mut buf = Vec::with_capacity(_buf_size);
+        if let Some(file) = response.take_file() {
+            response.write_header(&mut buf)?;
+            let mut buf = Vec::with_capacity(for_now!(1042));
+            let mut reader = BufReader::new(file);
+            loop {
+                let Ok(n) = reader.read_buf(&mut buf).await else {
+                    internal_error(writer);
+                    return Ok(());
+                };
+                writer.write_all(&buf).await?;
+                if n < buf.len() {
+                    break;
+                }
+            }
+        } else {
+            // TODO: compress the data?
+            response.write(&mut buf)?;
+            writer.write_all(&buf).await?;
+            debug_assert!(_buf_size >= buf.capacity());
+        }
+        // writer.flush().await?;
         // writer.shutdown().await?;
         Ok(())
     }

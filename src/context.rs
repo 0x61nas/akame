@@ -1,12 +1,15 @@
 use std::net::SocketAddr;
 
-use http::{header, Method};
+use http::{HeaderMap, HeaderName, Method};
 use tokio::{
-    io::{AsyncBufReadExt, AsyncReadExt, BufReader},
+    io::{AsyncBufReadExt, BufReader},
     net::tcp::OwnedReadHalf,
 };
 
-use crate::{Error, Request, Result, CRLF};
+use crate::{
+    request::{path::Path, query::Query, RequestLine},
+    Error, Request, Result, CRLF,
+};
 
 #[derive(Debug)]
 pub struct Context {
@@ -36,12 +39,23 @@ impl Context {
     //     self.reader
     // }
 
+    #[inline(always)]
+    pub fn path(&self) -> Path {
+        self.req_line.path()
+    }
+
+    #[inline(always)]
+    pub fn method(&self) -> Method {
+        self.req_line.method.clone()
+    }
+
+    pub fn query_params(&self) -> Option<Query> {
+        self.req_line.query()
+    }
+
     pub async fn into_request(self) -> Result<Request> {
         let (req_line, mut reader, _) = self.into_parts();
-        let mut rb = http::Request::builder()
-            .method(req_line.method)
-            .version(req_line.http_version)
-            .uri(req_line.path.clone());
+        let mut headers = HeaderMap::new();
         loop {
             let mut buf = Vec::with_capacity(60);
             let n = reader.read_until(b'\n', &mut buf).await?;
@@ -58,90 +72,24 @@ impl Context {
             let Some((key, value)) = buf.split_once(':') else {
                 return Err(Error::InvalidHeader(buf));
             };
-            rb = rb.header(key.to_lowercase(), value.trim());
+            headers.insert(
+                HeaderName::from_bytes(key.as_bytes()).expect("Invalid header name"),
+                value.trim().parse().expect("Invalid header value"),
+            );
         }
-        let mut body = Vec::new();
-        // body
-        if let Some(len) = rb.headers_ref().unwrap().get(header::CONTENT_LENGTH) {
-            let mut buffer = Vec::with_capacity(len.to_str().unwrap().parse().unwrap());
-            while let Ok(n) = reader.read(&mut buffer).await {
-                if n == 0 {
-                    break;
-                }
-                body.extend(&buffer);
-            }
-        }
+        // let mut body = Vec::new();
+        // // body
+        // if let Some(len) = rb.headers_ref().unwrap().get(header::CONTENT_LENGTH) {
+        //     let mut buffer = Vec::with_capacity(len.to_str().unwrap().parse().unwrap());
+        //     while let Ok(n) = reader.read(&mut buffer).await {
+        //         if n == 0 {
+        //             break;
+        //         }
+        //         body.extend(&buffer);
+        //     }
+        // }
 
-        rb.body(body).map_err(|_| crate::Error::InvalidRequest)
-    }
-}
-
-#[derive(Debug, PartialEq, Hash)]
-#[non_exhaustive]
-pub struct RequestLine {
-    pub method: Method,
-    pub path: Vec<u8>,
-    pub http_version: http::Version,
-}
-
-impl RequestLine {
-    pub fn new(bytes: Vec<u8>) -> Self {
-        Self::new_with_method(bytes, Method::GET)
-    }
-
-    #[inline]
-    pub fn new_with_method(path: Vec<u8>, method: Method) -> Self {
-        Self::new_with_method_and_version(method, path, http::Version::HTTP_11)
-    }
-
-    #[inline]
-    pub fn new_with_method_and_version(
-        method: Method,
-        path: Vec<u8>,
-        http_version: http::Version,
-    ) -> Self {
-        Self {
-            method,
-            path,
-            http_version,
-        }
-    }
-
-    pub fn from_bytes<B: IntoIterator<Item = u8>>(bytes: B) -> crate::Result<Self> {
-        let mut bytes = bytes.into_iter();
-        macro_rules! chunk {
-            ($buf: ident) => {
-                while let Some(b) = bytes.next() {
-                    if b == b' ' {
-                        break;
-                    }
-                    $buf.push(b);
-                }
-            };
-            ($buf: expr) => {{
-                let mut buf = $buf;
-                chunk!(buf);
-                buf
-            }};
-        }
-
-        let method = Method::from_bytes(&chunk!(Vec::with_capacity(7)))?;
-        let path = chunk!(Vec::new());
-        let http_version = {
-            use http::Version;
-            let version = chunk!(Vec::with_capacity(8));
-            match &version[..] {
-                b"HTTP/1.1" | b"HTTP/1" => Version::HTTP_11,
-                b"HTTP/2.0" | b"HTTP/2" => Version::HTTP_2,
-                b"HTTP/3.0" | b"HTTP/3" => Version::HTTP_3,
-                _ => Version::HTTP_11,
-            }
-        };
-
-        Ok(Self::new_with_method_and_version(
-            method,
-            path,
-            http_version,
-        ))
+        // rb.body(body).map_err(|_| crate::Error::InvalidRequest)
+        Ok(Request::new(req_line, headers, reader))
     }
 }
