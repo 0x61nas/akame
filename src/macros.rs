@@ -24,14 +24,17 @@ macro_rules! not_found {
 macro_rules! resource {
     ($path: expr, $mime: expr) => {{
         if let Ok(file) = $crate::fs::File::open(dbg!($path)).await {
-            let len = file.metadata().await?.len();
-            $crate::Response::builder()
-                .status($crate::StatusCode::OK)
-                .header_pair($crate::header::ContentType($mime))
-                .header($crate::header::CONTENT_LENGTH, len)
-                .body_file(file)
+            $crate::resource!(file: file, $mime)
         } else {
             $crate::not_found!()
         }
+    }};
+    (file: $file: ident, $mime: expr) => {{
+        let len = $file.metadata().await?.len();
+        $crate::Response::builder()
+            .status($crate::StatusCode::OK)
+            .header_pair($crate::header::ContentType($mime))
+            .header($crate::header::CONTENT_LENGTH, len)
+            .body_file($file)
     }};
 }
