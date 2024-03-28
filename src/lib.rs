@@ -20,6 +20,7 @@ pub use http::StatusCode;
 pub use request::Request;
 pub use response::Response;
 pub use router::Router;
+pub use tokio::fs;
 
 const CRLF: &str = "\r\n";
 
