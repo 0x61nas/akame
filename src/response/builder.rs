@@ -10,10 +10,11 @@ use crate::{header::HeaderPair, Response};
 use super::{Body, Parts};
 
 #[derive(Debug, Default)]
+#[non_exhaustive]
 pub struct ResponseBuilder {
-    status: StatusCode,
-    version: Version,
-    headers: HeaderMap,
+    pub status: StatusCode,
+    pub version: Version,
+    pub headers: HeaderMap,
 }
 
 impl ResponseBuilder {
