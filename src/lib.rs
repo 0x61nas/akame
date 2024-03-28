@@ -110,6 +110,7 @@ where
         let mut buf = Vec::with_capacity(_buf_size);
         if let Some(file) = response.take_file() {
             response.write_header(&mut buf)?;
+            writer.write_all(&buf).await?;
             let mut buf = Vec::with_capacity(for_now!(1042));
             let mut reader = BufReader::new(file);
             loop {
