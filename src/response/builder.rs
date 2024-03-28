@@ -72,15 +72,3 @@ impl ResponseBuilder {
 //         &mut self.inner
 //     }
 // }
-
-#[macro_export]
-macro_rules! not_found {
-    () => {
-        not_found!(::std::vec![])
-    };
-    ($body: expr) => {
-        $crate::Response::builder()
-            .status($crate::StatusCode::NOT_FOUND)
-            .body($body)
-    };
-}
