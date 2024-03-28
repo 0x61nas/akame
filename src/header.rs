@@ -1,7 +1,8 @@
 use std::{ops::Deref, str::FromStr};
 
 pub use http::header::*;
-use mime::Mime;
+pub use mime;
+pub use mime::Mime;
 
 #[derive(thiserror::Error, Debug)]
 #[error("Cant parse the provided header")]
