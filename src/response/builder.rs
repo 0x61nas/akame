@@ -46,8 +46,14 @@ impl ResponseBuilder {
         ))
     }
 
-    pub async fn file(self, path: impl AsRef<Path>) -> crate::Result<Response> {
-        Response::from_file(path, Parts::new(self.status, self.version, self.headers)).await
+    pub async fn body_path(self, path: impl AsRef<Path>) -> crate::Result<Response> {
+        Response::from_path(path, Parts::new(self.status, self.version, self.headers)).await
+    }
+    pub fn body_file(self, file: crate::fs::File) -> crate::Result<Response> {
+        Ok(Response::from_file(
+            file,
+            Parts::new(self.status, self.version, self.headers),
+        ))
     }
 
     pub fn status(mut self, status: StatusCode) -> Self {
