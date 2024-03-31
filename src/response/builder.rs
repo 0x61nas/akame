@@ -21,7 +21,7 @@ impl ResponseBuilder {
     pub fn new() -> Self {
         Self {
             status: StatusCode::default(),
-            version: Version::HTTP_2,
+            version: Version::HTTP_11,
             headers: HeaderMap::default(),
         }
     }
