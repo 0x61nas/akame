@@ -26,6 +26,19 @@ impl ResponseBuilder {
         }
     }
 
+    #[inline(always)]
+    pub(crate) fn new_with_preset(
+        status: StatusCode,
+        http_version: Version,
+        headers: HeaderMap,
+    ) -> Self {
+        Self {
+            status,
+            version: http_version,
+            headers,
+        }
+    }
+
     pub fn body(self, body: Body) -> crate::Result<Response> {
         Ok(Response::from_parts(
             Parts::new(self.status, self.version, self.headers),
