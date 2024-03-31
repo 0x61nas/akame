@@ -1,9 +1,17 @@
-use std::ops::Deref;
+use std::{
+    fmt::Display,
+    hash::Hash,
+    ops::{Deref, Index},
+    path::PathBuf,
+    str::FromStr,
+};
+
+use smallvec::{smallvec, SmallVec};
 
 #[derive(Debug, PartialEq, Hash, Clone)]
-#[repr(transparent)]
 pub struct Path<'inner> {
     inner: &'inner str,
+    chunks: SmallVec<[&'inner str; 6]>,
 }
 
 impl<'inner> Path<'inner> {
@@ -11,20 +19,22 @@ impl<'inner> Path<'inner> {
         self.inner
     }
 
-    pub(crate) const fn new(str: &'inner str) -> Path<'inner> {
-        Path { inner: str }
+    pub(crate) fn new(str: &'inner str) -> Path<'inner> {
+        let str = &str[1..];
+        Path {
+            inner: str,
+            chunks: Self::_chunks(str),
+        }
     }
 
-    pub fn chunks(&self) -> Box<[&str]> {
-        if self.inner.len() == 1 {
-            return Box::new([self.inner]);
+    fn _chunks(str: &str) -> SmallVec<[&str; 6]> {
+        if str.len() <= 1 {
+            return smallvec!["/"];
         }
-        self.inner
-            .split('/')
-            .skip(1)
+        str.split('/')
+            // .skip(1)
             .filter(|p| !p.is_empty())
-            .collect::<Vec<_>>()
-            .into_boxed_slice()
+            .collect::<SmallVec<_>>()
     }
 }
 
