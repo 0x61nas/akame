@@ -39,10 +39,10 @@ impl ResponseBuilder {
         }
     }
 
-    pub fn body(self, body: Body) -> crate::Result<Response> {
+    pub fn body(self, body: impl Into<Body>) -> crate::Result<Response> {
         Ok(Response::from_parts(
             Parts::new(self.status, self.version, self.headers),
-            body,
+            body.into(),
         ))
     }
 
