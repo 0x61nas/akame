@@ -1,13 +1,21 @@
 pub mod path;
 pub mod query;
 
-use http::{HeaderMap, Method, Uri};
-use tokio::{io::BufReader, net::tcp::OwnedReadHalf};
+use std::{cell::Cell, marker, sync::Arc};
+
+use http::{header::ToStrError, HeaderMap, HeaderName, Method, Uri};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader},
+    net::tcp::OwnedReadHalf,
+};
+
+use crate::{Error, CRLF};
 
 use self::{path::Path, query::Query};
 
 pub type Body = BufReader<OwnedReadHalf>;
 
+// #[derive(Debug)]
 pub struct Request {
     pub req_line: RequestLine,
     pub headers: HeaderMap,
@@ -23,9 +31,72 @@ impl Request {
         }
     }
 
+    pub(crate) async fn from_row(mut reader: BufReader<OwnedReadHalf>) -> crate::Result<Self> {
+        let req_line = RequestLine::from_row(&mut reader).await?;
+        let mut headers = HeaderMap::new();
+        loop {
+            let mut buf = Vec::with_capacity(60);
+            let n = reader.read_until(b'\n', &mut buf).await?;
+            // .context("Read headers")?;
+            if n == 0 {
+                break;
+            }
+            // println!("> {buf:?}");
+            let buf = String::from_utf8(buf).unwrap();
+            // println!("> {buf}");
+            if buf == CRLF {
+                break;
+            }
+            let Some((key, value)) = buf.split_once(':') else {
+                return Err(Error::InvalidHeader(buf));
+            };
+            headers.insert(
+                HeaderName::from_bytes(key.as_bytes()).expect("Invalid header name"),
+                value.trim().parse().expect("Invalid header value"),
+            );
+        }
+        // let mut body = Vec::new();
+        // // body
+        // if let Some(len) = rb.headers_ref().unwrap().get(header::CONTENT_LENGTH) {
+        //     let mut buffer = Vec::with_capacity(len.to_str().unwrap().parse().unwrap());
+        //     while let Ok(n) = reader.read(&mut buffer).await {
+        //         if n == 0 {
+        //             break;
+        //         }
+        //         body.extend(&buffer);
+        //     }
+        // }
+
+        // rb.body(body).map_err(|_| crate::Error::InvalidRequest)
+        Ok(Request::new(req_line, headers, reader))
+    }
+
     // pub fn path(&self) -> Path {
     //     Path::new(self.req_line.uri.path())
     // }
+
+    pub async fn read_body(
+        &mut self,
+        writer: &mut (impl AsyncWrite + marker::Unpin),
+    ) -> crate::Result<usize> {
+        let Some(len) = self.headers.get(crate::header::CONTENT_LENGTH) else {
+            todo!()
+        };
+        let len = len.to_str().unwrap().parse::<usize>().unwrap();
+        let mut buffer = Vec::with_capacity(len);
+        // let mut body = self.body.clone();
+        while let Ok(n) = self.body.read_buf(&mut buffer).await {
+            writer.write_all(&buffer).await?;
+            if n == len {
+                break;
+            }
+        }
+        Ok(len)
+    }
+
+    pub fn path(&self) -> Path {
+        self.req_line.path()
+    }
 }
 
 #[derive(Debug, PartialEq, Hash)]
@@ -100,5 +171,19 @@ impl RequestLine {
         };
 
         Ok(Self::new_with_method_and_version(method, uri, http_version))
+    }
+
+    #[inline(always)]
+    pub async fn from_row(reader: &mut BufReader<OwnedReadHalf>) -> crate::Result<Self> {
+        let mut buf = Vec::new();
+        reader.read_until(0xA, &mut buf).await?;
+        if let Some(lb) = buf.pop() {
+            if lb != b'\n' {
+                // invalid_request(xx);
+                // return Ok(());
+                return Err(crate::Error::InvalidRequest);
+            }
+        }
+        Self::from_bytes(buf)
     }
 }

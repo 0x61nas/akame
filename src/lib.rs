@@ -89,19 +89,13 @@ where
 
     async fn handle_request(self: Arc<Self>, stream: TcpStream, addr: SocketAddr) -> Result<()> {
         let (reader, mut writer) = stream.into_split();
-        let mut reader = BufReader::new(reader);
-        let mut buf = Vec::new();
-        reader.read_until(0xA, &mut buf).await?;
-        if let Some(lb) = buf.pop() {
-            if lb != b'\n' {
-                invalid_request();
-                return Ok(());
-            }
-        }
-        let req_line = dbg!(RequestLine::from_bytes(buf)?);
-        let ctx = Context::new(req_line, reader, addr);
+        let reader = BufReader::new(reader);
+        let Ok(ctx) = Context::new(reader, addr).await else {
+            invalid_request();
+            return Ok(());
+        };
         // Route
-        let Ok(mut response) = self.router.route(ctx).await else {
+        let Ok(response) = self.router.route(ctx).await else {
             internal_error(writer);
             return Ok(());
         };
