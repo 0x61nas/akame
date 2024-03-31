@@ -38,11 +38,38 @@ impl<'inner> Path<'inner> {
     }
 }
 
-impl Deref for Path<'_> {
-    type Target = str;
+impl<'a> Deref for Path<'a> {
+    type Target = [&'a str];
 
     fn deref(&self) -> &Self::Target {
-        self.inner
+        self.chunks.deref()
+    }
+}
+
+impl From<Path<'_>> for PathBuf {
+    fn from(value: Path) -> Self {
+        // SAFETY: the error is `Infallible`
+        unsafe { PathBuf::from_str(value.as_str()).unwrap_unchecked() }
+    }
+}
+
+impl Display for Path<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl Index<usize> for Path<'_> {
+    type Output = str;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        self.chunks.index(index)
+    }
+}
+
+impl<'a> AsRef<std::path::Path> for Path<'a> {
+    fn as_ref(&self) -> &std::path::Path {
+        std::path::Path::new(self.as_str())
     }
 }
 
