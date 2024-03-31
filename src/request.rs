@@ -1,11 +1,11 @@
 pub mod path;
 pub mod query;
 
-use std::{cell::Cell, marker, sync::Arc};
+use std::marker;
 
-use http::{header::ToStrError, HeaderMap, HeaderName, Method, Uri};
+use http::{HeaderMap, HeaderName, Method, Uri};
 use tokio::{
-    io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader},
+    io::{AsyncBufReadExt, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader},
     net::tcp::OwnedReadHalf,
 };
 

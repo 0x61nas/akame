@@ -1,7 +1,4 @@
-use std::{
-    ops::{Deref, DerefMut},
-    path::Path,
-};
+use std::path::Path;
 
 use http::{HeaderMap, HeaderName, HeaderValue, StatusCode, Version};
 
