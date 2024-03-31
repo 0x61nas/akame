@@ -38,3 +38,18 @@ macro_rules! resource {
             .body_file($file)
     }};
 }
+
+#[cfg(feature = "serde_json")]
+#[macro_export]
+macro_rules! json {
+    ($($json:tt)+) => {{
+        let body = $crate::_json!($( $json )+).to_string();
+        $crate::Response::builder()
+            .status($crate::StatusCode::OK)
+            .header_pair($crate::header::ContentType(
+                $crate::header::mime::APPLICATION_JSON,
+            ))
+            .header($crate::header::CONTENT_LENGTH, body.len())
+            .body(body)
+    }};
+}

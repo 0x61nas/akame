@@ -26,6 +26,9 @@ pub use response::Response;
 pub use router::Router;
 
 // For macros
+#[cfg(feature = "serde_json")]
+#[doc(hidden)]
+pub use serde_json::json as _json;
 #[doc(hidden)]
 pub use tokio::fs as _fs;
 

@@ -14,3 +14,9 @@ thiserror = "1.0.58"
 lazy_format = "2.0.3"
 mime = "0.3.17"
 smallvec = "1.13.2"
+serde_json = { version = "1.0.115", optional = true}
+
+[features]
+# serde_json = ["dep:serde_json"]
+default =  ["serde_json"]
+
