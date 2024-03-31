@@ -5,11 +5,15 @@ pub mod request;
 pub mod response;
 pub mod router;
 
-use std::{marker::PhantomData, net::SocketAddr, sync::Arc};
+use std::{
+    mem::{self, MaybeUninit},
+    net::SocketAddr,
+    sync::Arc,
+};
 
 use request::RequestLine;
 use tokio::{
-    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
+    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter, ReadBuf},
     net::{tcp::OwnedWriteHalf, TcpListener, TcpStream},
 };
 
@@ -100,30 +104,31 @@ where
             return Ok(());
         };
         let mut response = response.into();
+        // Write the respoonse HTTP header
+        let mut buf = Vec::with_capacity(response.guss_buf_size());
+        response.write_header(&mut buf)?;
+        writer.write_all(&buf).await?;
 
-        // write the response
-        let _buf_size = response.guss_buf_size();
-        let mut buf = Vec::with_capacity(_buf_size);
         if let Some(file) = response.take_file() {
-            response.write_header(&mut buf)?;
-            writer.write_all(&buf).await?;
-            let mut buf = Vec::with_capacity(for_now!(1042));
+            const CAP: usize = 7024;
+            // FIXME: use `MaybeUninit::uninit_array()`, https://github.com/rust-lang/rust/issues/96097
+            let buf = [MaybeUninit::<u8>::uninit(); CAP];
+            // SAFETY: We will ensure that we don't read uninitialized memory.
+            let mut buf = unsafe { mem::transmute::<_, [u8; CAP]>(buf) };
             let mut reader = BufReader::new(file);
             loop {
-                let Ok(n) = reader.read_buf(&mut buf).await else {
+                let Ok(n) = reader.read(&mut buf).await else {
                     internal_error(writer);
                     return Ok(());
                 };
-                writer.write_all(&buf).await?;
-                if n < buf.len() {
+                if n == 0 {
                     break;
                 }
+                writer.write_all(&buf[..n]).await?;
             }
         } else {
             // TODO: compress the data?
-            response.write(&mut buf)?;
-            writer.write_all(&buf).await?;
-            debug_assert!(_buf_size >= buf.capacity());
+            writer.write_all(&response.body).await?;
         }
         // writer.flush().await?;
         // writer.shutdown().await?;
