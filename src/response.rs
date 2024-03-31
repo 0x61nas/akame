@@ -1,17 +1,9 @@
 pub mod builder;
 
-use std::{
-    io::Write as StdWrite,
-    mem,
-    ops::{Deref, DerefMut},
-    path::Path,
-};
+use std::{io::Write as StdWrite, mem, path::Path};
 
 use http::{HeaderMap, HeaderValue, StatusCode, Version};
-use tokio::{
-    fs::File,
-    io::{AsyncReadExt, AsyncWriteExt},
-};
+use tokio::{fs::File, io::AsyncReadExt};
 
 use crate::{
     header::{self, ContentType, HeaderPair},
@@ -63,7 +55,7 @@ impl Parts {
 pub struct Response {
     // inner: http::Response<Vec<u8>>,
     head: Parts,
-    body: Body,
+    pub(crate) body: Body,
     pub(crate) file: Option<File>,
 }
 
@@ -89,7 +81,7 @@ impl Response {
     //     Self { inner, file: None }
     // }
 
-    async fn from_file(path: impl AsRef<Path>, mut head: Parts) -> Result<Self> {
+    async fn from_path(path: impl AsRef<Path>, mut head: Parts) -> Result<Self> {
         let mut file = File::open(path).await?;
         let len = file.metadata().await?.len();
         head.headers.insert(
@@ -115,6 +107,14 @@ impl Response {
         })
     }
 
+    fn from_file(file: File, head: Parts) -> Self {
+        Self {
+            head,
+            body: Body::new(),
+            file: Some(file),
+        }
+    }
+
     #[inline(always)]
     pub(crate) fn guss_buf_size(&self) -> usize {
         mem::size_of_val(self.headers())
@@ -135,39 +135,27 @@ impl Response {
         std::mem::take(&mut self.file)
     }
 
-    pub(crate) fn write<W: StdWrite>(&self, writer: &mut W) -> Result<()> {
-        // NOTE: maybe use `write_vectored`?
-        // The header
-        self.write_header(writer)?;
-        // th body
-        StdWrite::write_all(writer, &self.body)?;
-        // StdWrite::write_all(&mutbuf, b'\0')?;
+    // pub(crate) fn write<W: StdWrite + ?Sized>(&self, writer: &mut W) -> Result<()> {
+    //     // NOTE: maybe use `write_vectored`?
+    //     // The header
+    //     self.write_header(writer)?;
+    //     // th body
+    //     StdWrite::write_all(writer, &self.body)?;
+    //     // StdWrite::write_all(&mutbuf, b'\0')?;
 
-        // write
-        // StdWrite::write_all(&mut writer, &writer).map_err(crate::Error::IOError)
-        Ok(())
+    //     // write
+    //     // StdWrite::write_all(&mut writer, &writer).map_err(crate::Error::IOError)
+    //     Ok(())
+    // }
+
+    #[inline]
+    fn write_status_line(&self, writer: &mut (impl StdWrite + ?Sized)) -> Result<()> {
+        write!(writer, "{:?} {}{CRLF}", self.version(), self.status())
+            .map_err(crate::Error::IOError)
     }
 
     #[inline]
-    fn write_status_line(&self, writer: &mut impl StdWrite) -> Result<()> {
-        write!(
-            writer,
-            "HTTP/{} {}{CRLF}",
-            match self.version() {
-                Version::HTTP_2 => "2.0",
-                Version::HTTP_11 => "1.1",
-                Version::HTTP_3 => "3.0",
-                Version::HTTP_09 => "0.9",
-                Version::HTTP_10 => "1.0",
-                _ => "1.1",
-            },
-            self.status()
-        )
-        .map_err(crate::Error::IOError)
-    }
-
-    #[inline]
-    fn write_headers(&self, writer: &mut impl StdWrite) -> Result<()> {
+    fn write_headers(&self, writer: &mut (impl StdWrite + ?Sized)) -> Result<()> {
         for (header, val) in self.headers().iter() {
             StdWrite::write_fmt(
                 writer,
@@ -182,7 +170,7 @@ impl Response {
         Ok(())
     }
 
-    pub(crate) fn write_header(&self, writer: &mut impl StdWrite) -> Result<()> {
+    pub(crate) fn write_header(&self, writer: &mut (impl StdWrite + ?Sized)) -> Result<()> {
         // NOTE: maybe use `write_vectored`?
         // The header
         self.write_status_line(writer)?;
