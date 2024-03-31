@@ -23,7 +23,7 @@ macro_rules! not_found {
 #[macro_export]
 macro_rules! resource {
     ($path: expr, $mime: expr) => {{
-        if let Ok(file) = $crate::fs::File::open($path).await {
+        if let Ok(file) = $crate::_fs::File::open($path).await {
             $crate::resource!(file: file, $mime)
         } else {
             $crate::not_found!()

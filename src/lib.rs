@@ -24,7 +24,10 @@ pub use http::StatusCode;
 pub use request::Request;
 pub use response::Response;
 pub use router::Router;
-pub use tokio::fs;
+
+// For macros
+#[doc(hidden)]
+pub use tokio::fs as _fs;
 
 const CRLF: &str = "\r\n";
 
