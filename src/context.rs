@@ -3,17 +3,15 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use tokio::{
-    io::{AsyncBufReadExt, BufReader},
-    net::tcp::OwnedReadHalf,
-};
+use tokio::{io::BufReader, net::tcp::OwnedReadHalf};
 
-use crate::{Error, Request, Result, CRLF};
+use crate::{Request, Result};
 
 #[derive(Debug)]
+#[doc(alias = "ctx")]
 #[non_exhaustive]
 pub struct Context {
-    pub request: Request,
+    request: Request,
     pub addr: SocketAddr,
 }
 
@@ -26,13 +24,9 @@ impl Context {
         })
     }
 
-    // pub fn into_parts(self) -> (RequestLine, BufReader<OwnedReadHalf>, SocketAddr) {
-    //     (self.req_line, self.reader, self.addr)
-    // }
-
-    // pub fn inner_reader(self) -> OwnedReadHalf {
-    //     self.reader
-    // }
+    pub fn into_parts(self) -> (Request, SocketAddr) {
+        (self.request, self.addr)
+    }
 }
 
 impl Deref for Context {
