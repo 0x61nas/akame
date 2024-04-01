@@ -15,7 +15,7 @@ use self::{path::Path, query::Query};
 
 pub type Body = BufReader<OwnedReadHalf>;
 
-// #[derive(Debug)]
+#[derive(Debug)]
 pub struct Request {
     pub req_line: RequestLine,
     pub headers: HeaderMap,
@@ -71,10 +71,6 @@ impl Request {
         Ok(Request::new(req_line, headers, reader))
     }
 
-    // pub fn path(&self) -> Path {
-    //     Path::new(self.req_line.uri.path())
-    // }
-
     pub async fn read_body(
         &mut self,
         writer: &mut (impl AsyncWrite + marker::Unpin),
@@ -99,7 +95,7 @@ impl Request {
     }
 }
 
-#[derive(Debug, PartialEq, Hash)]
+#[derive(Debug, PartialEq, Hash, Clone)]
 pub struct RequestLine {
     pub method: Method,
     pub uri: Uri,
