@@ -11,6 +11,7 @@ pub mod server;
 pub use context::Context;
 pub use http::Method;
 pub use http::StatusCode;
+pub use http::Version as HttpVersion;
 pub use request::Request;
 pub use response::Response;
 pub use router::Router;
