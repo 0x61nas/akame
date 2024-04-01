@@ -10,7 +10,7 @@ use tokio::{
 
 use crate::{Error, Request, Result, CRLF};
 
-// #[derive(Debug)]
+#[derive(Debug)]
 #[non_exhaustive]
 pub struct Context {
     pub request: Request,
