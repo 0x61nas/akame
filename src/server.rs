@@ -1,5 +1,3 @@
-use std::mem;
-use std::mem::MaybeUninit;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -78,10 +76,7 @@ where
 
         if let Some(file) = response.take_file() {
             const CAP: usize = 7024;
-            // FIXME: use `MaybeUninit::uninit_array()`, https://github.com/rust-lang/rust/issues/96097
-            let buf = [MaybeUninit::<u8>::uninit(); CAP];
-            // SAFETY: We will ensure that we don't read uninitialized memory.
-            let mut buf = unsafe { mem::transmute::<_, [u8; CAP]>(buf) };
+            let mut buf = [0; CAP];
             let mut reader = BufReader::new(file);
             loop {
                 let Ok(n) = reader.read(&mut buf).await else {
