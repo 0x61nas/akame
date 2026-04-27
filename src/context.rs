@@ -11,7 +11,7 @@ use crate::{Request, Result};
 #[doc(alias = "ctx")]
 #[non_exhaustive]
 pub struct Context {
-    request: Request,
+    pub request: Request,
     pub addr: SocketAddr,
 }
 
