@@ -90,7 +90,7 @@ impl Request {
         Ok(len)
     }
 
-    pub fn path(&self) -> Path {
+    pub fn path(&self) -> Path<'_> {
         self.req_line.path()
     }
 }
@@ -108,12 +108,12 @@ impl RequestLine {
     }
 
     #[inline]
-    pub fn path(&self) -> Path {
+    pub fn path(&self) -> Path<'_> {
         Path::new(self.uri.path())
     }
 
     #[inline]
-    pub fn query(&self) -> Option<Query> {
+    pub fn query(&self) -> Option<Query<'_>> {
         Some(Query::new(self.uri.query()?))
     }
 
