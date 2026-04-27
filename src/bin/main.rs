@@ -3,12 +3,15 @@ use std::ops::Deref;
 use servi::preload::*;
 use tokio::net::TcpListener;
 
+const BIND_ADDRESS: &str = "127.0.0.1";
+const BIND_PORT: u16 = 6173;
+
 #[tokio::main]
 async fn main() {
-    let listener = TcpListener::bind(("127.0.0.1", 6173)).await.unwrap();
+    let listener = TcpListener::bind(("127.0.0.1", BIND_PORT)).await.unwrap();
 
     let mut server = Server::new(MyRouter, listener);
-    println!("starting the server");
+    println!("starting the server at {BIND_ADDRESS}:{BIND_PORT}");
     server.start().await.unwrap();
 }
 
